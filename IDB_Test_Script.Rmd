@@ -6,13 +6,13 @@ output: html_document
 ---
 
 
-## R Markdown
+### I. Load Ratings Data
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+We start the project by loading in the ratings data and verifying the shape of the data. This data will be the basis of our
+analysis. To ensure everything looks good, we will verify the number of observations, variables, and unique respondents in 
+the data.
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r setup, include=FALSE}
+```{r setup, echo=FALSE, warning=FALSE}
 
 ################################################################################
 #Set Up
@@ -26,21 +26,29 @@ if (Sys.info()['user'] == "kevinconklin") {
 #Load packages
 packages <- c("dplyr", "tidyr", "data.table", "knitr", "xtable", "broom", "survey",
               "gtsummary", "gt", "car", "forcats","sandwich","fixest","modelsummary", 
-              "RStata", "tibble","kableExtra")
+              "RStata", "tibble","kableExtra", "ggplot2","gridExtra")
 pacman::p_load(packages,
                character.only = TRUE,
                dependencies = TRUE)
 
-#Load data files
+#Load ratings data file
 ratings <- read.csv(paste(data_path, "ratings.csv", sep=""))
-demographics <- read.csv(paste(data_path, "demographics.csv", sep=""))
 
-#Merge data into main dataframe
-data <- merge(demographics, ratings, on="worker")
+#Show the number of observations and unique respondents
+respondents = length(unique(ratings$worker))
+n = nrow(ratings)
+k = ncol(ratings)
+
+print(paste("There are ", n, " observations, ", k, " variables, and ",
+            respondents, " unique respondents in the Ratings dataset.",sep=""))
 
 ```
 
+### II. Duplicate Cleaning
 
+Before running analysis on the ratings survey file, it was important to review any duplicates in the data. There appears
+to have been 257 set of duplicates. For each set of duplicates, there were no more than two observations. I have removed
+the dupliucates by selecting only the first response for a particular worker and aspect. 
 
 ```{r check, include = FALSE, message= FALSE, warning = FALSE}
 
@@ -49,7 +57,7 @@ data <- merge(demographics, ratings, on="worker")
 ################################################################################
 
 #See if any workers responded to the same aspect twice
-duplicates <- data %>%
+duplicates <- ratings %>%
   group_by(worker, aspect) %>%
   summarize(responses = n(),
             min_rating = min(rating),
@@ -67,11 +75,11 @@ max(duplicates$responses)
 
 # Get the number of observations in the dataframe prior to removal. This will help
 # ensure that the correct number of observations are removed
-original_length = nrow(data)
+original_length = nrow(ratings)
 
 # Create an index that counts observations by worker and aspect, where 1 is assigned to the first rating
 # Keep only the first index
-data <- data %>%
+ratings <- ratings %>%
   arrange(worker, aspect, time) %>%
   group_by(worker, aspect) %>%
   mutate(index = row_number()) %>%
@@ -85,12 +93,105 @@ nrow(duplicates) == (original_length - new_length)
 
 ```
 
-## Including Plots
+### III. Analysis of Subjective Riches
 
-You can also embed plots, for example:
+Subjective riches is a summary metric used to describe the overall satisfaction of a respondent with each of the aspects
+referred to in the survey. It was calculated by averaging the ratings given to all aspects for a given individual. The 
+table below gives an overview of the spread of subjective riches in the data set. The average and median ratings are about
+61, although they range from a little over 5 to 100 across the 1056 individuals that responded. From the histogram, we can
+see that the scores have a unimodal and bell-curve distribution, with the exception of the truncation right at a rating of 100 (the highest rating possible).
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r subjective_riches, echo=FALSE, warning=FALSE, message = FALSE, fig.show="hold", out.width="50%"}
+
+sub_riches <- ratings %>%
+  group_by(worker) %>%
+  summarize(
+    aspects_rated = n(),
+    average_rating = mean(rating),
+    max_rating = max(rating),
+    minimum_rating = min(rating)
+  ) 
+
+# Calulate Stats
+Count = nrow(sub_riches)
+Minimum = round(min(sub_riches$average_rating),1)
+percentile_25 = round(quantile(sub_riches$average_rating, probs = 0.25),1)
+percentile_50 = round(quantile(sub_riches$average_rating, probs = 0.5),1)
+Average = round(mean(sub_riches$average_rating),1)
+percentile_75 = round(quantile(sub_riches$average_rating, probs = 0.75),1)
+Maximum = round(max(sub_riches$average_rating),1)
+St_Dev = round(sd(sub_riches$average_rating),1)
+
+# Pull stats into a dataframe
+Names <- c("Number of Respondents", "Minimum", "25th Percentile", "50th Percentile", 
+               "75th Percentile", "Maximum", "Mean", "Standard Deviation")
+Values <- c(Count, Minimum, percentile_25, percentile_50, percentile_75, Maximum, Average, St_Dev)
+tb <- cbind(Names, Values) 
+rownames(tb) <- NULL
+
+# Create a table using kableExtra to show the descriptive statistics
+tb %>%
+  kbl(caption = "<span style='font-size:20px'>Subjective Riches Descriptive Statistics</span>",
+      col.names = c("Statistic Name","Value"),
+      align = "l") %>%
+  kable_classic(full_width = F, html_font = "Cambria", position = "float_left") %>%
+  footnote(alphabet = c("Subjective Riches is calculated using the average rating  17 aspects",
+                        "These descriptive statistics are based on a sample of 1056 respondants"))
+
+
+ggplot(data = sub_riches,mapping = aes(x = average_rating)) +
+  geom_histogram(fill = "lightblue", color="black") +
+  labs(title = "Distribution of Subjective Riches Ratings", 
+       subtitle = "N = 1056",
+       x="", 
+       y="Rating",
+       caption = "Solid blue line marks the average, dotted blue lines are standard deviation") +
+  theme(axis.title.y = element_text(color="black",face="bold")) +
+  theme(axis.title.x = element_text(color="black",face="bold")) +
+  theme(plot.title = element_text(hjust=0.5,face="bold")) +
+  theme(plot.subtitle = element_text(hjust=0.5,face="bold")) +
+  theme(panel.background = element_rect(fill = "white", color="black")) +
+  theme(axis.text.y = element_text(color="black")) +
+  theme(axis.text.x = element_text(angle=90,color="black")) +
+  geom_vline(xintercept = Average, color = "blue") +
+  geom_vline(xintercept = Average + St_Dev, linetype = "dashed", color = "blue") +
+  geom_vline(xintercept = Average - St_Dev, linetype = "dashed", color = "blue") +
+  theme(plot.caption = element_text(hjust = 0))
+
+
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+### IV. Load Demographic Data
+
+Before proceeding to the regression analysis, we will need to combine the demographic data and the subjective
+riches data. We can see that the dataset has 1056 unique respondents, just as we saw in the ratings data set. There are 
+1056 observations, which implies that each unique respondent has only one observation. We also have six variables in the
+data set. From here we can feel comfortable merging our two data sets. 
+
+```{r demo, echo=FALSE, warning=FALSE}
+
+# Load demographics data
+dem <- read.csv(paste(data_path, "Demographics.csv", sep=""))
+
+#Show the number of observations and unique respondents
+respondents2 = length(unique(dem$worker))
+n2 = nrow(dem)
+k2 = ncol(dem)
+
+print(paste("There are ", n2, " observations, ", k2, " variables, and ",
+            respondents2, " unique respondents in the Demographics dataset.",sep=""))
+
+merged_data <- merge(dem, sub_riches, by = "worker")
+
+
+```
+
+
+
+
+
+
+
+
+
