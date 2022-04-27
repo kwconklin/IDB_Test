@@ -26,7 +26,8 @@ if (Sys.info()['user'] == "kevinconklin") {
 #Load packages
 packages <- c("dplyr", "tidyr", "data.table", "knitr", "xtable", "broom", "survey",
               "gtsummary", "gt", "car", "forcats","sandwich","fixest","modelsummary", 
-              "RStata", "tibble","kableExtra", "ggplot2","gridExtra")
+              "RStata", "tibble","kableExtra", "ggplot2","gridExtra","jtools",
+              "stargazer", "fastDummies")
 pacman::p_load(packages,
                character.only = TRUE,
                dependencies = TRUE)
@@ -182,16 +183,66 @@ k2 = ncol(dem)
 print(paste("There are ", n2, " observations, ", k2, " variables, and ",
             respondents2, " unique respondents in the Demographics dataset.",sep=""))
 
-merged_data <- merge(dem, sub_riches, by = "worker")
-
+# Merge demographic and subjective riches data
+# Rename average rating to subjective riches for clarity
+merged_data <- merge(dem, sub_riches, by = "worker") %>%
+  rename(subjective_riches = average_rating)
 
 ```
 
 
+### V. Bivariate Regression Analysis
+
+To better understand the relationship between demographcis and subjective riches, we will begin by running a basic bivariate
+regression of subjective riches over income. This will help us determine two things:
+
+1) Is income significantly related to subjective riches? In other words, does subjective riches meaningfully change with income?
+2) To what extent does income explain the variation we see in subjective riches?
 
 
 
+```{r ols, echo=FALSE, warning=FALSE, results="asis", fig.show="hold", out.width="50%"}
 
+# Create the variables you will need for the regression analyses
+# Squared version of age to use for the quadratic in the second regression
+# Dummy variables for the race and education level
+merged_data <- merged_data %>%
+  mutate(age_sq = age**2,
+         Log_Income = log(income)) %>%
+  dummy_cols(c("race","education")) %>%
+  rename(
+    Subjective_Riches = subjective_riches,
+    Income = income,
+    Male = male,
+    Age = age,
+    Age_Squared = age_sq,
+    Asian = `race_Asian (non-Hispanic)`,
+    Black = `race_Black (non-Hispanic)`,
+    Hispanic = `race_Hispanic (any race)`,
+    Multiracial = `race_Multiracial`,
+    Other_Race = `race_Other`,
+    White = `race_White (non-Hispanic)`,
+    High_School = `education_High school`,
+    Some_College = `education_Some college`,
+    Bachelors = `education_Bachelor's degree`,
+    Grad_Degree = `education_Graduate degree`,
+    Masters = `education_Master's degree`,
+    Doctorate = `education_Doctoral degree`
+  )
+
+# Create a bivariate model that explains variation in subjective riches using income only
+model1 <- lm(Subjective_Riches ~ Log_Income, data=merged_data)
+
+# Create a multivariate model that explains subjective riches using income, gender, age, age squared, race and education
+# We will keep White (non-Hispanic) and Less than high school education out as baselines
+model2 <- lm(Subjective_Riches ~ Log_Income + Male + Age + Age_Squared + Asian + Black + Hispanic + Multiracial + 
+               Other_Race + High_School + Some_College + Bachelors + Grad_Degree + Masters + Doctorate, data = merged_data)
+
+summ(model1)
+summ(model2)
+#stargazer(model1, model2, title = "Model 1", type = "html", align=TRUE)
+
+```
 
 
 
