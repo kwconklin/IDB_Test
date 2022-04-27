@@ -1,0 +1,96 @@
+---
+title: "IDB Data Exercise"
+author: "Kevin Conklin"
+date: "4/26/2022"
+output: html_document
+---
+
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r setup, include=FALSE}
+
+################################################################################
+#Set Up
+################################################################################
+
+#Set path to directory with data
+if (Sys.info()['user'] == "kevinconklin") {
+  data_path <- "/Users/kevinconklin/Desktop/IDB Data Task/Data Task/"
+} else (print("Please enter path to data"))
+
+#Load packages
+packages <- c("dplyr", "tidyr", "data.table", "knitr", "xtable", "broom", "survey",
+              "gtsummary", "gt", "car", "forcats","sandwich","fixest","modelsummary", 
+              "RStata", "tibble","kableExtra")
+pacman::p_load(packages,
+               character.only = TRUE,
+               dependencies = TRUE)
+
+#Load data files
+ratings <- read.csv(paste(data_path, "ratings.csv", sep=""))
+demographics <- read.csv(paste(data_path, "demographics.csv", sep=""))
+
+#Merge data into main dataframe
+data <- merge(demographics, ratings, on="worker")
+
+```
+
+
+
+```{r check, include = FALSE, message= FALSE, warning = FALSE}
+
+################################################################################
+#Data Check
+################################################################################
+
+#See if any workers responded to the same aspect twice
+duplicates <- data %>%
+  group_by(worker, aspect) %>%
+  summarize(responses = n(),
+            min_rating = min(rating),
+            max_rating = max(rating)) %>%
+  filter(responses > 1)
+
+# Are there any instances where an individual rated the same aspect twice, but with different ratings?
+# There are no instances of this
+complicated_duplicates <- duplicates %>% 
+  filter(min_rating != max_rating)
+
+# What is the maximum number of times that an individual rated the same aspect?
+# Seems the maximum is 2 ratings for the same aspect 
+max(duplicates$responses)
+
+# Get the number of observations in the dataframe prior to removal. This will help
+# ensure that the correct number of observations are removed
+original_length = nrow(data)
+
+# Create an index that counts observations by worker and aspect, where 1 is assigned to the first rating
+# Keep only the first index
+data <- data %>%
+  arrange(worker, aspect, time) %>%
+  group_by(worker, aspect) %>%
+  mutate(index = row_number()) %>%
+  filter(index == 1)
+
+# Capture the new number of rows
+new_length = nrow(data)
+
+# Confirm that the difference is equal to the number of pairs of duplicates
+nrow(duplicates) == (original_length - new_length)
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
