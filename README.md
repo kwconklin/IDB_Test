@@ -1,2 +1,2 @@
 # IDB_Test
-Script for IDB data test
+This Github repo is meant to store progress on my data test for the IDB. 
